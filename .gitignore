@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.pyc
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+frontend/dist/
+CLAUDE.md
+.claude/

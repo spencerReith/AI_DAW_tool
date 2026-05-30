@@ -58,11 +58,13 @@ function LaunchPage({ onGo }) {
 
   return (
     <div className="launch">
-      <h1 className="launch-title">beats</h1>
-      <pre className="launch-art">{lineStates.join('\n')}</pre>
-      {done && (
-        <button className="launch-go" onClick={onGo}>go</button>
-      )}
+      <div className="launch-content">
+        <h1 className="launch-title">beats</h1>
+        <pre className="launch-art">{lineStates.join('\n')}</pre>
+        {done && (
+          <button className="launch-go" onClick={onGo}>go</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -71,6 +73,27 @@ function LaunchPage({ onGo }) {
 function GeneratorPage({ onGenerate }) {
   const [description, setDescription] = useState('');
   const [bpm, setBpm] = useState('');
+  const [duration, setDuration] = useState('90');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${FLASK_URL}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description, bpm: Number(bpm), duration: Number(duration) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'generation failed');
+      onGenerate(data.audio_url);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="generator">
@@ -82,24 +105,42 @@ function GeneratorPage({ onGenerate }) {
           placeholder="dark, slow, heavy bass..."
           value={description}
           onChange={e => setDescription(e.target.value)}
+          disabled={loading}
         />
       </div>
-      <div className="gen-field">
-        <p className="field-label">bpm</p>
-        <input
-          className="gen-bpm"
-          type="number"
-          placeholder="120"
-          value={bpm}
-          onChange={e => setBpm(e.target.value)}
-        />
+      <div className="gen-row">
+        <div className="gen-field">
+          <p className="field-label">bpm</p>
+          <input
+            className="gen-bpm"
+            type="number"
+            placeholder="120"
+            value={bpm}
+            onChange={e => setBpm(e.target.value)}
+            disabled={loading}
+          />
+        </div>
+        <div className="gen-field">
+          <p className="field-label">duration (sec)</p>
+          <input
+            className="gen-bpm"
+            type="number"
+            placeholder="90"
+            min="1"
+            max="180"
+            value={duration}
+            onChange={e => setDuration(e.target.value)}
+            disabled={loading}
+          />
+        </div>
       </div>
+      {error && <p className="error">{error}</p>}
       <button
         className="generate-btn"
-        disabled={!description.trim() || !bpm}
-        onClick={onGenerate}
+        disabled={!description.trim() || !bpm || loading}
+        onClick={handleGenerate}
       >
-        generate
+        {loading ? 'generating...' : 'generate'}
       </button>
     </div>
   );
@@ -111,7 +152,7 @@ function formatTime(s) {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 }
 
-function TrackRow({ track, buffer, onToggle, onSeek }) {
+function TrackRow({ track, buffer, url, onToggle, onSeek }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -157,12 +198,27 @@ function TrackRow({ track, buffer, onToggle, onSeek }) {
           {formatTime(track.currentTime)} / {formatTime(track.duration)}
         </span>
       </div>
-      <canvas ref={canvasRef} className="track-canvas" onClick={handleClick} />
+      {track.error
+        ? <p className="track-error">{track.error}</p>
+        : <canvas ref={canvasRef} className="track-canvas" onClick={handleClick} />
+      }
+      <button className="track-download" onClick={() => {
+        const ts = new Date().toISOString().slice(0,19).replace('T','_').replace(/:/g,'-');
+        fetch(url)
+          .then(r => r.blob())
+          .then(blob => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${ts}-beat${track.id}.mp3`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          });
+      }}>↓</button>
     </div>
   );
 }
 
-function PlayerPage() {
+function PlayerPage({ audioUrl, onGenerateMore }) {
   const audioCtxRef = useRef(null);
   const bufferRef = useRef(null);
   const rafRef = useRef(null);
@@ -171,20 +227,22 @@ function PlayerPage() {
   const genRef = useRef(0); // incremented each startNode call; onended ignores stale firings
 
   const [tracks, setTracks] = useState(() =>
-    [1, 2, 3, 4].map(id => ({ id, duration: 0, isPlaying: false, currentTime: 0 }))
+    audioUrl ? [{ id: 1, duration: 0, isPlaying: false, currentTime: 0 }] : []
   );
 
   useEffect(() => {
+    if (!audioUrl) return;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     audioCtxRef.current = ctx;
 
-    fetch(DUMMY_AUDIO)
-      .then(r => r.arrayBuffer())
+    fetch(audioUrl)
+      .then(r => { if (!r.ok) throw new Error(`fetch failed: ${r.status}`); return r.arrayBuffer(); })
       .then(ab => ctx.decodeAudioData(ab))
       .then(buf => {
         bufferRef.current = buf;
         setTracks(prev => prev.map(t => ({ ...t, duration: buf.duration })));
-      });
+      })
+      .catch(e => setTracks(prev => prev.map(t => ({ ...t, error: e.message }))));
 
     const loop = () => {
       const a = activeRef.current;
@@ -260,15 +318,18 @@ function PlayerPage() {
   return (
     <div className="player">
       <p className="player-title">beats</p>
+      {!audioUrl && <p className="error">no audio loaded — go back and generate a beat.</p>}
       {tracks.map(track => (
         <TrackRow
           key={track.id}
           track={track}
           buffer={bufferRef.current}
+          url={audioUrl}
           onToggle={() => togglePlay(track.id)}
           onSeek={r => seek(track.id, r)}
         />
       ))}
+      <button className="generate-more-btn" onClick={onGenerateMore}>generate more</button>
     </div>
   );
 }
@@ -337,11 +398,11 @@ function App() {
   }
 
   if (screen === 'generator') {
-    return <GeneratorPage onGenerate={() => setScreen('player')} />;
+    return <GeneratorPage onGenerate={(url) => { setMidiData({ audioUrl: url }); setScreen('player'); }} />;
   }
 
   if (screen === 'player') {
-    return <PlayerPage />;
+    return <PlayerPage audioUrl={midiData?.audioUrl} onGenerateMore={() => setScreen('generator')} />;
   }
 
   if (screen === 'drop') {

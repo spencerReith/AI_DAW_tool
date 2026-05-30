@@ -1,12 +1,41 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 import mido
 import replicate
-import io  # used by mido to read file bytes
+import anthropic
+import io
 import os
+import datetime
+import requests as http_requests
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
+
+# Load stable audio prompt guide once at startup
+_guide_path = os.path.join(os.path.dirname(__file__), '..', 'stable_audio_prompt_guide.md')
+with open(_guide_path, 'r') as f:
+    STABLE_AUDIO_GUIDE = f.read()
+
+SYSTEM_PROMPT = f"""You are a prompt engineer for Stability AI's Stable Audio 2.5 model.
+
+Your only job is to rewrite a user's beat description into a structured Stable Audio prompt.
+
+Use this format, including only the fields that apply:
+Format: Band | Genre: <genre> | Subgenre: <subgenre> | Instruments: <list> | Moods: <list> | BPM: <bpm>
+
+Rules:
+- Output the prompt string only. No explanation, no punctuation outside the prompt, no markdown.
+- Do not invent elements the user did not describe or imply.
+- BPM must always be included using the value provided.
+- Base your word choices strictly on the vocabulary and examples in the guide below.
+- Prefer specific instrument names over vague terms (e.g. "808 kick" over "bass drum").
+- Keep it concise. Do not pad with unnecessary adjectives.
+
+--- STABLE AUDIO PROMPT GUIDE ---
+{STABLE_AUDIO_GUIDE}
+"""
+
+claude = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_KEY'))
 
 app = Flask(__name__)
 CORS(app)  # Step 4: allow requests from Electron renderer (localhost:5173)
@@ -39,32 +68,60 @@ def parse():
 
     return jsonify({'bpm': bpm, 'time_signature': time_sig, 'key': key})
 
-# Step 7: call Replicate Stable Audio 2.5; returns MP3 URL
+GENERATED_DIR = os.path.join(os.path.dirname(__file__), '..', 'generated')
+os.makedirs(GENERATED_DIR, exist_ok=True)
+
+# Step 7: call Replicate Stable Audio 2.5; saves MP3 locally and returns URL + path
 @app.route('/generate', methods=['POST'])
 def generate():
     body = request.get_json()
+    description = body.get('description', '').strip()
     bpm = body.get('bpm', 120)
-    time_sig = body.get('time_signature', '4/4')
-    key = body.get('key')
-    accompaniment = body.get('accompaniment', '').lower()
-    vibe = body.get('vibe', '').strip()
+    duration = min(int(body.get('duration', 90)), 180)
 
-    parts = [f'{accompaniment} track', f'{bpm}bpm', time_sig]
-    if key:
-        parts.append(key)
-    if vibe:
-        parts.append(vibe)
-    prompt = ', '.join(parts)
+    print(f'[request] description="{description}" bpm={bpm} duration={duration}')
+
+    # Rewrite the user's description into a structured Stable Audio prompt via Claude
+    raw_prompt = f'{description}, {bpm} BPM'
+    try:
+        msg = claude.messages.create(
+            model='claude-opus-4-8',
+            max_tokens=256,
+            system=SYSTEM_PROMPT,
+            messages=[{'role': 'user', 'content': f'Description: {description}\nBPM: {bpm}'}]
+        )
+        prompt = msg.content[0].text.strip()
+        print(f'[claude] rewritten prompt: {prompt}')
+    except Exception as e:
+        prompt = raw_prompt
+        print(f'[claude] error, falling back to raw prompt: {e}')
+
+    replicate_input = {'prompt': prompt, 'duration': duration}
+    print(f'[replicate] input: {replicate_input}')
 
     try:
-        duration = body.get('duration', 90)
         output = replicate.run(
             'stability-ai/stable-audio-2.5',
-            input={'prompt': prompt, 'duration': duration}
+            input=replicate_input
         )
-        return jsonify({'audio_url': output.url})
+        audio_url = output.url
+
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'beat_{timestamp}.mp3'
+        filepath = os.path.join(GENERATED_DIR, filename)
+
+        audio_bytes = http_requests.get(audio_url).content
+        with open(filepath, 'wb') as f:
+            f.write(audio_bytes)
+
+        local_url = f'http://localhost:5000/generated/{filename}'
+        return jsonify({'audio_url': audio_url, 'local_url': local_url})
     except Exception as e:
         return jsonify({'error': str(e)}), 502
+
+@app.route('/generated/<filename>')
+def serve_generated(filename):
+    return send_from_directory(GENERATED_DIR, filename)
 
 if __name__ == '__main__':
     app.run(port=5000)

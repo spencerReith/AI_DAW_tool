@@ -1,12 +1,8 @@
-// Step 1: Launch page — beats title + Rick Rubin ASCII typewriter + go button
-// Step 6: Drop Zone (Screen 1) + Session Summary (Screen 2)
-// Step 7b: Colab URL input wired into generate request
 import { useState, useRef, useEffect } from 'react';
 import rubinRaw from '../../rubin.txt?raw';
 import './App.css';
 
 const FLASK_URL = 'http://localhost:5000';
-const ACCOMPANIMENT_TYPES = ['Drums', 'Bass', 'Melody'];
 
 // Split once at module level — never changes
 const LINES = rubinRaw.split('\n');
@@ -146,7 +142,6 @@ function GeneratorPage({ onGenerate }) {
   );
 }
 
-const DUMMY_AUDIO = '/test_audio/replicate-prediction-eaza12tnaxrm80cs76tr9xtea4.mp3';
 
 function formatTime(s) {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
@@ -260,6 +255,7 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
   function stopActive() {
     const a = activeRef.current;
     if (!a) return null;
+    genRef.current++; // invalidate onended from this node so it doesn't reset currentTime
     try { a.node.stop(); } catch (_) {}
     activeRef.current = null;
     const ctx = audioCtxRef.current;
@@ -319,16 +315,18 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
     <div className="player">
       <p className="player-title">beats</p>
       {!audioUrl && <p className="error">no audio loaded — go back and generate a beat.</p>}
-      {tracks.map(track => (
-        <TrackRow
-          key={track.id}
-          track={track}
-          buffer={bufferRef.current}
-          url={audioUrl}
-          onToggle={() => togglePlay(track.id)}
-          onSeek={r => seek(track.id, r)}
-        />
-      ))}
+      <div className="track-list">
+        {tracks.map(track => (
+          <TrackRow
+            key={track.id}
+            track={track}
+            buffer={bufferRef.current}
+            url={audioUrl}
+            onToggle={() => togglePlay(track.id)}
+            onSeek={r => seek(track.id, r)}
+          />
+        ))}
+      </div>
       <button className="generate-more-btn" onClick={onGenerateMore}>generate more</button>
     </div>
   );
@@ -336,198 +334,11 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
 
 function App() {
   const [screen, setScreen] = useState('launch');
-  const [midiData, setMidiData] = useState(null);
-  const [accompaniment, setAccompaniment] = useState(null);
-  const [vibe, setVibe] = useState('');
-  const [error, setError] = useState(null);
-  const inputRef = useRef(null);
+  const [audioUrl, setAudioUrl] = useState(null);
 
-  function isValidMidi(file) {
-    return file.name.endsWith('.mid') || file.name.endsWith('.midi');
-  }
-
-  // Step 4: send file to /parse; Step 5: backend returns parsed data
-  async function handleFile(file) {
-    if (!isValidMidi(file)) {
-      setError('Please provide a .mid or .midi file.');
-      return;
-    }
-    setError(null);
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch(`${FLASK_URL}/parse`, { method: 'POST', body: form });
-      const data = await res.json();
-      setMidiData(data);
-      setAccompaniment(null);
-      setVibe('');
-      setScreen('summary');
-    } catch (e) {
-      setError(`Request failed: ${e.message}`);
-    }
-  }
-
-  function onDrop(e) {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }
-
-  // Step 7: send generate request to Flask, which calls Replicate
-  async function handleGenerate() {
-    setError(null);
-    setScreen('generating');
-    try {
-      const res = await fetch(`${FLASK_URL}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...midiData, accompaniment, vibe }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Generation failed.');
-      setScreen('result');
-      setMidiData((d) => ({ ...d, resultUrl: data.audio_url }));
-    } catch (e) {
-      setError(e.message);
-      setScreen('summary');
-    }
-  }
-
-  if (screen === 'launch') {
-    return <LaunchPage onGo={() => setScreen('generator')} />;
-  }
-
-  if (screen === 'generator') {
-    return <GeneratorPage onGenerate={(url) => { setMidiData({ audioUrl: url }); setScreen('player'); }} />;
-  }
-
-  if (screen === 'player') {
-    return <PlayerPage audioUrl={midiData?.audioUrl} onGenerateMore={() => setScreen('generator')} />;
-  }
-
-  if (screen === 'drop') {
-    return (
-      <div className="app">
-        <p className="app-name">AI DAW Tool</p>
-        <div
-          className="drop-zone"
-          onDrop={onDrop}
-          onDragOver={(e) => e.preventDefault()}
-          onClick={() => inputRef.current.click()}
-        >
-          <p>Drop your MIDI file here</p>
-          <p className="hint">or click to browse</p>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".mid,.midi"
-            style={{ display: 'none' }}
-            onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
-          />
-        </div>
-        {error && <p className="error">{error}</p>}
-      </div>
-    );
-  }
-
-  // Step 8: Generating screen (Screen 3)
-  if (screen === 'generating') {
-    return (
-      <div className="app">
-        <p className="app-name">AI DAW Tool</p>
-        <div className="generating">
-          <div className="spinner" />
-          <p>Generating your track…</p>
-          <p className="hint">This can take a few minutes.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Step 8: Result screen (Screen 4)
-  if (screen === 'result') {
-    return (
-      <div className="app">
-        <p className="app-name">AI DAW Tool</p>
-        <div className="summary">
-          <p className="meta">Your track is ready.</p>
-          <a className="generate-btn" href={midiData.resultUrl} download="accompaniment.mp3">
-            Download .mp3
-          </a>
-          <button className="generate-btn" style={{ marginTop: 0 }} onClick={handleGenerate}>
-            Generate another variation
-          </button>
-          <button
-            style={{ background: 'none', border: 'none', fontSize: 13, color: '#888', cursor: 'pointer', padding: 0 }}
-            onClick={() => { setScreen('drop'); setMidiData(null); }}
-          >
-            ← Start over
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Screen 2 — Session Summary
-  const { bpm, time_signature, key } = midiData;
-  const metaParts = [bpm && `${bpm} BPM`, time_signature, key ?? 'Key unknown'].filter(Boolean);
-  const nonStandard = time_signature !== '4/4';
-
-  return (
-    <div className="app">
-      <p className="app-name">AI DAW Tool</p>
-      <div className="summary">
-        <p className="meta">{metaParts.join(' · ')}</p>
-
-        {nonStandard && (
-          <div className="warning">Non-standard time signature — generation may be less accurate.</div>
-        )}
-
-        <div>
-          <p className="field-label">Accompaniment</p>
-          <div className="accompaniment-selector">
-            {ACCOMPANIMENT_TYPES.map((type) => (
-              <button
-                key={type}
-                className={accompaniment === type ? 'selected' : ''}
-                onClick={() => setAccompaniment(type)}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="field-label">Vibe (optional)</p>
-          <input
-            className="vibe-input"
-            type="text"
-            placeholder="dark, lo-fi, sparse..."
-            value={vibe}
-            onChange={(e) => setVibe(e.target.value)}
-          />
-        </div>
-
-        {error && <p className="error">{error}</p>}
-
-        <button
-          className="generate-btn"
-          disabled={!accompaniment}
-          onClick={handleGenerate}
-        >
-          Generate
-        </button>
-
-        <button
-          style={{ background: 'none', border: 'none', fontSize: 13, color: '#888', cursor: 'pointer', padding: 0 }}
-          onClick={() => { setScreen('drop'); setMidiData(null); }}
-        >
-          ← Start over
-        </button>
-      </div>
-    </div>
-  );
+  if (screen === 'launch') return <LaunchPage onGo={() => setScreen('generator')} />;
+  if (screen === 'generator') return <GeneratorPage onGenerate={(url) => { setAudioUrl(url); setScreen('player'); }} />;
+  return <PlayerPage audioUrl={audioUrl} onGenerateMore={() => setScreen('generator')} />;
 }
 
 export default App;

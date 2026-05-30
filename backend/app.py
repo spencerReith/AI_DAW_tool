@@ -18,18 +18,23 @@ with open(_guide_path, 'r') as f:
 
 SYSTEM_PROMPT = f"""You are a prompt engineer for Stability AI's Stable Audio 2.5 model.
 
-Your only job is to rewrite a user's beat description into a structured Stable Audio prompt.
+Your only job is to rewrite a user's beat description into a single Stable Audio prompt string.
 
-Use this format, including only the fields that apply:
-Format: Band | Genre: <genre> | Subgenre: <subgenre> | Instruments: <list> | Moods: <list> | BPM: <bpm>
+Follow the guide below exactly. Structure the output in this order:
+1. Core style/genre (with subgenre if applicable)
+2. Use case phrase (e.g. "perfect for a long drive")
+3. Key instruments — primary, supporting, rhythm, texture
+4. Mood descriptors (precise, evocative language — not generic words like "happy" or "sad")
+5. BPM (always include the exact value provided)
+6. Any relevant production characteristics (recording quality, arrangement style, era references)
 
 Rules:
-- Output the prompt string only. No explanation, no punctuation outside the prompt, no markdown.
+- Output the prompt string only. No explanation, no markdown, no labels.
+- Use natural language sentences, not pipe-delimited fields.
 - Do not invent elements the user did not describe or imply.
-- BPM must always be included using the value provided.
-- Base your word choices strictly on the vocabulary and examples in the guide below.
-- Prefer specific instrument names over vague terms (e.g. "808 kick" over "bass drum").
-- Keep it concise. Do not pad with unnecessary adjectives.
+- Use specific instrument names (e.g. "808 kick" over "bass drum", "pedal steel guitar" over "guitar").
+- Use vocabulary and phrasing drawn directly from the guide examples.
+- Keep it concise — every word should add meaningful context.
 
 --- STABLE AUDIO PROMPT GUIDE ---
 {STABLE_AUDIO_GUIDE}
@@ -77,7 +82,7 @@ def generate():
     body = request.get_json()
     description = body.get('description', '').strip()
     bpm = body.get('bpm', 120)
-    duration = min(int(body.get('duration', 90)), 180)
+    duration = max(1, min(int(body.get('duration', 90)), 190))
 
     print(f'[request] description="{description}" bpm={bpm} duration={duration}')
 

@@ -131,7 +131,7 @@
   border-top: 1.5px solid #000;
   height: 80px;
 }
-.track-row:last-child { border-bottom: 1.5px solid #000; }
+.track-list { border-bottom: 1.5px solid #000; }
 
 .track-meta {
   width: 120px;

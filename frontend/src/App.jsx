@@ -3,12 +3,13 @@ import rubinRaw from '../../rubin.txt?raw';
 import './App.css';
 
 const FLASK_URL = 'http://localhost:5000';
+const HUM_URL = 'http://localhost:5001';
 
 // Split once at module level — never changes
 const LINES = rubinRaw.split('\n');
 
 function LaunchPage({ onGo }) {
-  const [lineStates, setLineStates] = useState(() => LINES.map(() => ''));
+  const [lineStates, setLineStates] = useState(() => LINES.map(l => ' '.repeat(l.length)));
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ function LaunchPage({ onGo }) {
       let allDone = true;
 
       setLineStates(LINES.map((line, i) => {
-        if (tick < startTick[i]) { allDone = false; return ''; }
+        if (tick < startTick[i]) { allDone = false; return ' '.repeat(line.length); }
         const chars = Math.min((tick - startTick[i]) * CHARS_PER_TICK, line.length);
         if (chars < line.length) allDone = false;
         if (dirs[i] === 1) return line.slice(0, chars);
@@ -66,7 +67,7 @@ function LaunchPage({ onGo }) {
 }
 
 // Generator page — beat description + BPM input
-function GeneratorPage({ onGenerate }) {
+function GeneratorPage({ onGenerate, onHum }) {
   const [description, setDescription] = useState('');
   const [bpm, setBpm] = useState('');
   const [duration, setDuration] = useState('90');
@@ -138,6 +139,7 @@ function GeneratorPage({ onGenerate }) {
       >
         {loading ? 'generating...' : 'generate'}
       </button>
+      <button className="hum-btn" onClick={onHum} disabled={loading}>hum a melody</button>
     </div>
   );
 }
@@ -332,12 +334,69 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
   );
 }
 
+function HumPage({ onBack, onGenerate }) {
+  const [file, setFile] = useState(null);
+  const [prompt, setPrompt] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('prompt', prompt);
+    try {
+      const res = await fetch(`${HUM_URL}/hum`, { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'generation failed');
+      onGenerate(data.audio_url);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="generator">
+      <p className="generator-title">beats</p>
+      <div className="gen-field">
+        <p className="field-label">upload your hum (.mp3)</p>
+        <input
+          type="file"
+          accept=".mp3"
+          onChange={e => { setFile(e.target.files[0]); setError(null); }}
+          disabled={loading}
+        />
+      </div>
+      <div className="gen-field">
+        <p className="field-label">describe the sound</p>
+        <textarea
+          className="gen-textarea"
+          placeholder="dark, lo-fi, warm bass..."
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          disabled={loading}
+        />
+      </div>
+      {error && <p className="error">{error}</p>}
+      <button className="generate-btn" disabled={!file || !prompt.trim() || loading} onClick={handleGenerate}>
+        {loading ? 'generating...' : 'generate'}
+      </button>
+      <button className="hum-btn" onClick={onBack} disabled={loading}>← back</button>
+    </div>
+  );
+}
+
 function App() {
   const [screen, setScreen] = useState('launch');
   const [audioUrl, setAudioUrl] = useState(null);
 
+  const goToPlayer = (url) => { setAudioUrl(url); setScreen('player'); };
+
   if (screen === 'launch') return <LaunchPage onGo={() => setScreen('generator')} />;
-  if (screen === 'generator') return <GeneratorPage onGenerate={(url) => { setAudioUrl(url); setScreen('player'); }} />;
+  if (screen === 'hum') return <HumPage onBack={() => setScreen('generator')} onGenerate={goToPlayer} />;
+  if (screen === 'generator') return <GeneratorPage onGenerate={goToPlayer} onHum={() => setScreen('hum')} />;
   return <PlayerPage audioUrl={audioUrl} onGenerateMore={() => setScreen('generator')} />;
 }
 

@@ -111,7 +111,7 @@ def generate():
         )
         audio_url = output.url
 
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.datetime.now().strftime('%H_%M_%S')
         filename = f'beat_{timestamp}.mp3'
         filepath = os.path.join(GENERATED_DIR, filename)
 

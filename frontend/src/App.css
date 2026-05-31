@@ -345,3 +345,25 @@
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Hum page */
+.hum-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-family: inherit;
+  color: #888;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.hum-btn:hover:not(:disabled) { color: #000; }
+.hum-btn:disabled { opacity: 0.4; cursor: default; }
+
+.hum-result {
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  color: #555;
+  word-break: break-all;
+  margin: 0;
+}

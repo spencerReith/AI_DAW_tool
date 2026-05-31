@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor
 import mido
 import replicate
 import anthropic
@@ -76,53 +77,58 @@ def parse():
 GENERATED_DIR = os.path.join(os.path.dirname(__file__), '..', 'generated')
 os.makedirs(GENERATED_DIR, exist_ok=True)
 
-# Step 7: call Replicate Stable Audio 2.5; saves MP3 locally and returns URL + path
+
+def generate_one(description, bpm, duration, timestamp, index):
+    """Run one variation: Claude rewrite → Stable Audio → save. Returns local URL or None."""
+    try:
+        raw_prompt = f'{description}, {bpm} BPM'
+        try:
+            msg = claude.messages.create(
+                model='claude-opus-4-8',
+                max_tokens=256,
+                system=SYSTEM_PROMPT,
+                messages=[{'role': 'user', 'content': f'Description: {description}\nBPM: {bpm}'}]
+            )
+            prompt = msg.content[0].text.strip()
+            print(f'[claude] variation {index}: {prompt}')
+        except Exception as e:
+            prompt = raw_prompt
+            print(f'[claude] variation {index} error, falling back: {e}')
+
+        output = replicate.run('stability-ai/stable-audio-2.5', input={'prompt': prompt, 'duration': duration})
+        audio_bytes = http_requests.get(output.url).content
+
+        filename = f'beat_{timestamp}_{index}.mp3'
+        with open(os.path.join(GENERATED_DIR, filename), 'wb') as f:
+            f.write(audio_bytes)
+
+        return f'http://localhost:5000/generated/{filename}'
+    except Exception as e:
+        print(f'[generate_one] variation {index} failed: {e}')
+        return None
+
+
 @app.route('/generate', methods=['POST'])
 def generate():
     body = request.get_json()
     description = body.get('description', '').strip()
-    bpm = body.get('bpm', 120)
-    duration = max(1, min(int(body.get('duration', 90)), 190))
+    bpm        = body.get('bpm', 120)
+    duration   = max(1, min(int(body.get('duration', 90)), 190))
+    variations = max(1, min(int(body.get('variations', 1)), 4))
 
-    print(f'[request] description="{description}" bpm={bpm} duration={duration}')
+    print(f'[request] description="{description}" bpm={bpm} duration={duration} variations={variations}')
 
-    # Rewrite the user's description into a structured Stable Audio prompt via Claude
-    raw_prompt = f'{description}, {bpm} BPM'
-    try:
-        msg = claude.messages.create(
-            model='claude-opus-4-8',
-            max_tokens=256,
-            system=SYSTEM_PROMPT,
-            messages=[{'role': 'user', 'content': f'Description: {description}\nBPM: {bpm}'}]
-        )
-        prompt = msg.content[0].text.strip()
-        print(f'[claude] rewritten prompt: {prompt}')
-    except Exception as e:
-        prompt = raw_prompt
-        print(f'[claude] error, falling back to raw prompt: {e}')
+    timestamp = datetime.datetime.now().strftime('%H_%M_%S')
 
-    replicate_input = {'prompt': prompt, 'duration': duration}
-    print(f'[replicate] input: {replicate_input}')
+    with ThreadPoolExecutor(max_workers=variations) as ex:
+        futures = [ex.submit(generate_one, description, bpm, duration, timestamp, i + 1) for i in range(variations)]
+        audio_urls = [f.result() for f in futures]
 
-    try:
-        output = replicate.run(
-            'stability-ai/stable-audio-2.5',
-            input=replicate_input
-        )
-        audio_url = output.url
+    audio_urls = [u for u in audio_urls if u is not None]
+    if not audio_urls:
+        return jsonify({'error': 'all variations failed'}), 502
 
-        timestamp = datetime.datetime.now().strftime('%H_%M_%S')
-        filename = f'beat_{timestamp}.mp3'
-        filepath = os.path.join(GENERATED_DIR, filename)
-
-        audio_bytes = http_requests.get(audio_url).content
-        with open(filepath, 'wb') as f:
-            f.write(audio_bytes)
-
-        local_url = f'http://localhost:5000/generated/{filename}'
-        return jsonify({'audio_url': audio_url, 'local_url': local_url})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 502
+    return jsonify({'audio_urls': audio_urls})
 
 @app.route('/generated/<filename>')
 def serve_generated(filename):

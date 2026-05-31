@@ -71,6 +71,7 @@ function GeneratorPage({ onGenerate, onHum }) {
   const [description, setDescription] = useState('');
   const [bpm, setBpm] = useState('');
   const [duration, setDuration] = useState('90');
+  const [variations, setVariations] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -81,11 +82,11 @@ function GeneratorPage({ onGenerate, onHum }) {
       const res = await fetch(`${FLASK_URL}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description, bpm: Number(bpm), duration: Number(duration) }),
+        body: JSON.stringify({ description, bpm: Number(bpm), duration: Number(duration), variations: Number(variations) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'generation failed');
-      onGenerate(data.audio_url);
+      onGenerate(data.audio_urls);
     } catch (e) {
       setError(e.message);
       setLoading(false);
@@ -124,9 +125,22 @@ function GeneratorPage({ onGenerate, onHum }) {
             type="number"
             placeholder="90"
             min="1"
-            max="180"
+            max="190"
             value={duration}
             onChange={e => setDuration(e.target.value)}
+            disabled={loading}
+          />
+        </div>
+        <div className="gen-field">
+          <p className="field-label">variations</p>
+          <input
+            className="gen-bpm"
+            type="number"
+            placeholder="1"
+            min="1"
+            max="4"
+            value={variations}
+            onChange={e => setVariations(e.target.value)}
             disabled={loading}
           />
         </div>
@@ -207,39 +221,43 @@ function TrackRow({ track, buffer, url, onToggle, onSeek }) {
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = `${ts}-beat${track.id}.mp3`;
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(a.href);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(a.href), 100);
           });
       }}>↓</button>
     </div>
   );
 }
 
-function PlayerPage({ audioUrl, onGenerateMore }) {
+function PlayerPage({ audioUrls, onGenerateMore }) {
   const audioCtxRef = useRef(null);
-  const bufferRef = useRef(null);
-  const rafRef = useRef(null);
-  // single active source: { id, node, startedAt, offsetAt, duration }
-  const activeRef = useRef(null);
-  const genRef = useRef(0); // incremented each startNode call; onended ignores stale firings
+  const buffersRef  = useRef({});  // id -> AudioBuffer
+  const rafRef      = useRef(null);
+  const activeRef   = useRef(null);
+  const genRef      = useRef(0);
 
   const [tracks, setTracks] = useState(() =>
-    audioUrl ? [{ id: 1, duration: 0, isPlaying: false, currentTime: 0 }] : []
+    (audioUrls || []).map((_, i) => ({ id: i + 1, duration: 0, isPlaying: false, currentTime: 0 }))
   );
 
   useEffect(() => {
-    if (!audioUrl) return;
+    if (!audioUrls?.length) return;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     audioCtxRef.current = ctx;
 
-    fetch(audioUrl)
-      .then(r => { if (!r.ok) throw new Error(`fetch failed: ${r.status}`); return r.arrayBuffer(); })
-      .then(ab => ctx.decodeAudioData(ab))
-      .then(buf => {
-        bufferRef.current = buf;
-        setTracks(prev => prev.map(t => ({ ...t, duration: buf.duration })));
-      })
-      .catch(e => setTracks(prev => prev.map(t => ({ ...t, error: e.message }))));
+    audioUrls.forEach((url, i) => {
+      const id = i + 1;
+      fetch(url)
+        .then(r => { if (!r.ok) throw new Error(`fetch failed: ${r.status}`); return r.arrayBuffer(); })
+        .then(ab => ctx.decodeAudioData(ab))
+        .then(buf => {
+          buffersRef.current[id] = buf;
+          setTracks(prev => prev.map(t => t.id === id ? { ...t, duration: buf.duration } : t));
+        })
+        .catch(e => setTracks(prev => prev.map(t => t.id === id ? { ...t, error: e.message } : t)));
+    });
 
     const loop = () => {
       const a = activeRef.current;
@@ -257,7 +275,7 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
   function stopActive() {
     const a = activeRef.current;
     if (!a) return null;
-    genRef.current++; // invalidate onended from this node so it doesn't reset currentTime
+    genRef.current++;
     try { a.node.stop(); } catch (_) {}
     activeRef.current = null;
     const ctx = audioCtxRef.current;
@@ -266,7 +284,7 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
 
   function startNode(id, offsetAt, duration) {
     const ctx = audioCtxRef.current;
-    const buf = bufferRef.current;
+    const buf = buffersRef.current[id];
     if (!ctx || !buf) return;
     const gen = ++genRef.current;
     const node = ctx.createBufferSource();
@@ -275,7 +293,7 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
     node.start(0, offsetAt);
     activeRef.current = { id, node, startedAt: ctx.currentTime, offsetAt, duration };
     node.onended = () => {
-      if (genRef.current !== gen) return; // superseded by a newer startNode call
+      if (genRef.current !== gen) return;
       activeRef.current = null;
       setTracks(p => p.map(t => t.id === id ? { ...t, isPlaying: false, currentTime: 0 } : t));
     };
@@ -283,7 +301,7 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
 
   function togglePlay(id) {
     const ctx = audioCtxRef.current;
-    if (!ctx || !bufferRef.current) return;
+    if (!ctx || !buffersRef.current[id]) return;
     ctx.resume();
 
     if (activeRef.current?.id === id) {
@@ -303,7 +321,7 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
 
   function seek(id, ratio) {
     const track = tracks.find(t => t.id === id);
-    if (!track || !bufferRef.current) return;
+    if (!track || !buffersRef.current[id]) return;
     const offsetAt = ratio * track.duration;
     const wasActive = activeRef.current?.id === id;
     stopActive();
@@ -316,14 +334,14 @@ function PlayerPage({ audioUrl, onGenerateMore }) {
   return (
     <div className="player">
       <p className="player-title">beats</p>
-      {!audioUrl && <p className="error">no audio loaded — go back and generate a beat.</p>}
+      {!audioUrls?.length && <p className="error">no audio loaded — go back and generate a beat.</p>}
       <div className="track-list">
         {tracks.map(track => (
           <TrackRow
             key={track.id}
             track={track}
-            buffer={bufferRef.current}
-            url={audioUrl}
+            buffer={buffersRef.current[track.id]}
+            url={audioUrls?.[track.id - 1]}
             onToggle={() => togglePlay(track.id)}
             onSeek={r => seek(track.id, r)}
           />
@@ -390,14 +408,14 @@ function HumPage({ onBack, onGenerate }) {
 
 function App() {
   const [screen, setScreen] = useState('launch');
-  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioUrls, setAudioUrls] = useState([]);
 
-  const goToPlayer = (url) => { setAudioUrl(url); setScreen('player'); };
+  const goToPlayer = (urls) => { setAudioUrls(Array.isArray(urls) ? urls : [urls]); setScreen('player'); };
 
   if (screen === 'launch') return <LaunchPage onGo={() => setScreen('generator')} />;
   if (screen === 'hum') return <HumPage onBack={() => setScreen('generator')} onGenerate={goToPlayer} />;
   if (screen === 'generator') return <GeneratorPage onGenerate={goToPlayer} onHum={() => setScreen('hum')} />;
-  return <PlayerPage audioUrl={audioUrl} onGenerateMore={() => setScreen('generator')} />;
+  return <PlayerPage audioUrls={audioUrls} onGenerateMore={() => setScreen('generator')} />;
 }
 
 export default App;

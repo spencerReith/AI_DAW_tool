@@ -35,7 +35,7 @@ def log(msg):
         f.write(f'[{timestamp}] {msg}\n')
 
 # Load stable audio prompt guide once at startup
-_guide_path = os.path.join(os.path.dirname(__file__), '..', 'stable_audio_prompt_guide.md')
+_guide_path = os.path.join(os.path.dirname(__file__), '..', 'prompt_guides', 'stable_audio_prompt_guide.md')
 with open(_guide_path, 'r') as f:
     STABLE_AUDIO_GUIDE = f.read()
 
@@ -66,7 +66,7 @@ Rules:
 claude = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_KEY'))
 
 # Load musicgen prompt guide once at startup
-_musicgen_guide_path = os.path.join(os.path.dirname(__file__), '..', 'musicgen_prompting.md')
+_musicgen_guide_path = os.path.join(os.path.dirname(__file__), '..', 'prompt_guides', 'musicgen_prompting.md')
 with open(_musicgen_guide_path, 'r') as f:
     MUSICGEN_GUIDE = f.read()
 

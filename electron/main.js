@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 
-const FLASK_PORT = 5000;
+const FLASK_PORT = 5001;
 let flaskProcess = null;
 
 function startFlask() {

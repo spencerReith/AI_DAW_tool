@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import { Mic } from 'lucide-react';
 import rubinRaw from '../../rubin.txt?raw';
 import './App.css';
 
-const FLASK_URL = 'http://localhost:5000';
+const FLASK_URL = 'http://localhost:5001';
 const HUM_URL = 'http://localhost:5001';
 
 // Split once at module level — never changes
@@ -73,7 +74,17 @@ function GeneratorPage({ onGenerate, onHum }) {
   const [duration, setDuration] = useState('90');
   const [variations, setVariations] = useState('1');
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('generate');
   const [error, setError] = useState(null);
+
+
+  useEffect(() => {
+    if (!loading) { setLoadingText('generate'); return; }
+    const frames = ['generating.', 'generating..', 'generating...'];
+    let i = 0;
+    const id = setInterval(() => { i = (i + 1) % frames.length; setLoadingText(frames[i]); }, 400);
+    return () => clearInterval(id);
+  }, [loading]);
 
   async function handleGenerate() {
     setLoading(true);
@@ -100,7 +111,7 @@ function GeneratorPage({ onGenerate, onHum }) {
         <p className="field-label">describe your beat</p>
         <textarea
           className="gen-textarea"
-          placeholder="dark, slow, heavy bass..."
+          placeholder="_"
           value={description}
           onChange={e => setDescription(e.target.value)}
           disabled={loading}
@@ -127,7 +138,7 @@ function GeneratorPage({ onGenerate, onHum }) {
             min="1"
             max="190"
             value={duration}
-            onChange={e => setDuration(e.target.value)}
+            onChange={e => setDuration(String(Math.min(190, Math.max(1, Number(e.target.value)))))}
             disabled={loading}
           />
         </div>
@@ -140,7 +151,7 @@ function GeneratorPage({ onGenerate, onHum }) {
             min="1"
             max="4"
             value={variations}
-            onChange={e => setVariations(e.target.value)}
+            onChange={e => setVariations(String(Math.min(4, Math.max(1, Number(e.target.value)))))}
             disabled={loading}
           />
         </div>
@@ -151,9 +162,14 @@ function GeneratorPage({ onGenerate, onHum }) {
         disabled={!description.trim() || !bpm || loading}
         onClick={handleGenerate}
       >
-        {loading ? 'generating...' : 'generate'}
+        {loadingText}
       </button>
-      <button className="hum-btn" onClick={onHum} disabled={loading}>hum a melody</button>
+      <div className="mic-wrap">
+        <button className="mic-btn" onClick={onHum} disabled={loading}>
+          <Mic size={22} />
+        </button>
+        <span className="mic-tooltip">upload a melody</span>
+      </div>
     </div>
   );
 }
@@ -356,7 +372,17 @@ function HumPage({ onBack, onGenerate }) {
   const [file, setFile] = useState(null);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('generate');
   const [error, setError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!loading) { setLoadingText('generate'); return; }
+    const frames = ['generating.', 'generating..', 'generating...'];
+    let i = 0;
+    const id = setInterval(() => { i = (i + 1) % frames.length; setLoadingText(frames[i]); }, 400);
+    return () => clearInterval(id);
+  }, [loading]);
 
   async function handleGenerate() {
     setLoading(true);
@@ -381,17 +407,22 @@ function HumPage({ onBack, onGenerate }) {
       <div className="gen-field">
         <p className="field-label">upload your hum (.mp3)</p>
         <input
+          ref={fileInputRef}
           type="file"
           accept=".mp3"
+          style={{ display: 'none' }}
           onChange={e => { setFile(e.target.files[0]); setError(null); }}
           disabled={loading}
         />
+        <button className="hum-upload-btn" onClick={() => fileInputRef.current.click()} disabled={loading}>
+          {file ? file.name : '+ choose file'}
+        </button>
       </div>
       <div className="gen-field">
         <p className="field-label">describe the sound</p>
         <textarea
           className="gen-textarea"
-          placeholder="dark, lo-fi, warm bass..."
+          placeholder="_"
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
           disabled={loading}
@@ -399,9 +430,9 @@ function HumPage({ onBack, onGenerate }) {
       </div>
       {error && <p className="error">{error}</p>}
       <button className="generate-btn" disabled={!file || !prompt.trim() || loading} onClick={handleGenerate}>
-        {loading ? 'generating...' : 'generate'}
+        {loadingText}
       </button>
-      <button className="hum-btn" onClick={onBack} disabled={loading}>← back</button>
+      <button className="back-btn" onClick={onBack} disabled={loading}>← back</button>
     </div>
   );
 }

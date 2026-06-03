@@ -15,3 +15,22 @@
 [2026-06-02 01:14:59] [musicgen] claude rewritten prompt="Country ballad with acoustic guitar, soulful harmonica lead up front, and warm steel guitar, heartfelt and laid-back, live recording feel, moderate tempo with a gentle swing feel"
 [2026-06-02 01:15:01] [musicgen] full render="01_15_01_full.mp3"
 [2026-06-02 01:15:39] [musicgen] output="musicgen_01_15_01.mp3"
+[2026-06-02 10:32:43] [stable-audio] prompt="cool forest beat" bpm=120 duration=90 variations=1
+[2026-06-02 10:32:46] [stable-audio] variation 1 claude prompt="Ambient house instrumental perfect for a peaceful forest walk, featuring an atmospheric synthesizer melody, lush pads, a steady electronic drum machine pattern, deep sub bass, and reverb tails layered with natural texture. The mood is serene, mystical, and immersive, 120 BPM, with a lush, expansive production style."
+[2026-06-02 10:32:52] [stable-audio] variation 1 output="beat_10_32_43_1.mp3"
+[2026-06-02 10:47:12] [stable-audio] prompt="EDM track inspired by fisher in the key of Fminor. Dark tones. Heavy bass." bpm=120 duration=90 variations=4
+[2026-06-02 10:47:16] [stable-audio] variation 4 claude prompt="Dark tech house instrumental inspired by Fisher, perfect for a peak-time club set, featuring a heavy driving bassline, punchy four-on-the-floor kick, rolling syncopated percussion, gritty synth stabs in F minor, and atmospheric reverberating pads. The mood is brooding, hypnotic, raw, and relentless, 120 BPM, with a modern, club-ready production."
+[2026-06-02 10:47:19] [stable-audio] variation 2 claude prompt="Dark tech-house EDM instrumental in the key of F minor, inspired by Fisher, perfect for a peak-time club set. Driving four-on-the-floor kick, a heavy rolling bassline, syncopated percussion, gritty synth stabs, and atmospheric pads with reverberating echoes. The mood is brooding, hypnotic, and relentless, 120 BPM. Modern, punchy production with a raw, club-ready low end."
+[2026-06-02 10:47:20] [stable-audio] variation 3 claude prompt="Dark tech-house EDM instrumental in the style of Fisher, perfect for a peak-time club set, featuring a driving rolling bassline, deep sub-bass, punchy four-on-the-floor kick drums, crisp hi-hats, and hypnotic minimal synth stabs in F minor. The mood is brooding, hypnotic, and relentlessly energetic with a gritty underground edge, 120 BPM, modern club production with a punchy, bass-heavy mix."
+[2026-06-02 10:47:21] [stable-audio] variation 1 claude prompt="Dark tech-house EDM instrumental in the key of F minor, perfect for a packed warehouse dancefloor, featuring a driving four-on-the-floor kick, heavy rolling sub-bass, gritty acid synth stabs, syncopated percussion, and minimal atmospheric pads. The mood is brooding, hypnotic, and relentless, 120 BPM, with a stripped-back modern club production."
+[2026-06-02 10:47:22] [stable-audio] variation 4 output="beat_10_47_12_4.mp3"
+[2026-06-02 10:47:25] [stable-audio] variation 3 output="beat_10_47_12_3.mp3"
+[2026-06-02 10:47:25] [stable-audio] variation 2 output="beat_10_47_12_2.mp3"
+[2026-06-02 10:47:27] [stable-audio] variation 1 output="beat_10_47_12_1.mp3"
+[2026-06-02 10:49:42] [musicgen] prompt="Make it feel more country" input="Scientist hum.mp3"
+[2026-06-02 10:49:44] [musicgen] claude rewritten prompt="Acoustic country with twangy electric guitar, steel guitar, and warm bass, heartfelt and laid-back, live recording feel, moderate tempo, major key, gentle straight beat with a relaxed groove"
+[2026-06-02 10:50:11] [musicgen] full render="10_50_10_full.mp3"
+[2026-06-02 10:50:49] [musicgen] output="musicgen_10_50_10.mp3"
+[2026-06-02 10:51:14] [stable-audio] prompt="femle vocals for an EDM track in the key of Fminor, fisher inspired" bpm=120 duration=100 variations=1
+[2026-06-02 10:51:18] [stable-audio] variation 1 claude prompt="A driving tech house instrumental inspired by Fisher, perfect for a packed dancefloor, featuring soulful female vocals, a deep rolling bassline, punchy four-on-the-floor kick drums, crisp hi-hats and claps, and reverberating synth stabs in F minor. The mood is hypnotic, euphoric, and relentless, 120 BPM, with a modern club-ready production and an expansive, energetic arrangement."
+[2026-06-02 10:51:24] [stable-audio] variation 1 output="beat_10_51_14_1.mp3"

@@ -138,7 +138,8 @@ function GeneratorPage({ onGenerate, onHum }) {
             min="1"
             max="190"
             value={duration}
-            onChange={e => setDuration(String(Math.min(190, Math.max(1, Number(e.target.value)))))}
+            onChange={e => setDuration(e.target.value)}
+            onBlur={e => setDuration(String(Math.min(190, Math.max(1, Number(e.target.value) || 1))))}
             disabled={loading}
           />
         </div>
@@ -151,7 +152,8 @@ function GeneratorPage({ onGenerate, onHum }) {
             min="1"
             max="4"
             value={variations}
-            onChange={e => setVariations(String(Math.min(4, Math.max(1, Number(e.target.value)))))}
+            onChange={e => setVariations(e.target.value)}
+            onBlur={e => setVariations(String(Math.min(4, Math.max(1, Number(e.target.value) || 1))))}
             disabled={loading}
           />
         </div>
@@ -405,7 +407,7 @@ function HumPage({ onBack, onGenerate }) {
     <div className="generator">
       <p className="generator-title">beats</p>
       <div className="gen-field">
-        <p className="field-label">upload your hum (.mp3)</p>
+        <p className="field-label">upload your melody (.mp3)</p>
         <input
           ref={fileInputRef}
           type="file"

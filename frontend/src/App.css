@@ -286,6 +286,88 @@
   margin-bottom: 10px;
 }
 
+.field-optional {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #bbb;
+}
+
+/* Seed audio section */
+.seed-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.seed-inputs {
+  display: flex;
+  flex-direction: column;
+}
+
+.seed-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.seed-upload-btn,
+.seed-sketch-btn {
+  background: none;
+  border: none;
+  border-bottom: 1.5px solid #000;
+  padding: 10px 0;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  color: #000;
+  min-width: 100px;
+  text-align: left;
+}
+.seed-upload-btn:disabled,
+.seed-sketch-btn:disabled { opacity: 0.4; cursor: default; }
+
+.seed-sketch-btn.recording {
+  color: #c00;
+  border-bottom-color: #c00;
+}
+
+.seed-active {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1.5px solid #000;
+}
+
+.seed-name {
+  font-size: 14px;
+  color: #000;
+}
+
+.seed-clear {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #888;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.seed-clear:hover:not(:disabled) { color: #000; }
+.seed-clear:disabled { opacity: 0.4; cursor: default; }
+
+.noise-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.noise-slider {
+  width: 140px;
+  accent-color: #000;
+  cursor: pointer;
+}
+
 .accompaniment-selector {
   display: flex;
   gap: 8px;

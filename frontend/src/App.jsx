@@ -82,7 +82,15 @@ function GeneratorPage({ onGenerate }) {
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('generate');
   const [error, setError] = useState(null);
+  const [seedFile, setSeedFile] = useState(null);
+  const [seedLabel, setSeedLabel] = useState('');
+  const [noiseLevel, setNoiseLevel] = useState(0.5);
+  const [recording, setRecording] = useState(false);
 
+  const fileInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const recordingStartRef = useRef(null);
 
   useEffect(() => {
     if (!loading) { setLoadingText('generate'); return; }
@@ -92,15 +100,72 @@ function GeneratorPage({ onGenerate }) {
     return () => clearInterval(id);
   }, [loading]);
 
+  function clearSeed() {
+    setSeedFile(null);
+    setSeedLabel('');
+    setNoiseLevel(0.5);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  function handleFileChange(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    clearSeed();
+    setSeedFile(f);
+    setSeedLabel(f.name);
+  }
+
+  async function startSketch() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recordingStartRef.current = Date.now();
+      mr.ondataavailable = e => chunksRef.current.push(e.data);
+      mr.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const secs = Math.round((Date.now() - recordingStartRef.current) / 1000);
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        clearSeed();
+        setSeedFile(blob);
+        setSeedLabel(`sketch (${m}:${String(s).padStart(2, '0')})`);
+        setRecording(false);
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setRecording(true);
+    } catch {
+      setError('mic access denied');
+    }
+  }
+
+  function stopSketch() {
+    mediaRecorderRef.current?.stop();
+  }
+
   async function handleGenerate() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${FLASK_URL}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description, bpm: Number(bpm), duration: Number(duration), variations: Number(variations) }),
-      });
+      let res;
+      if (seedFile) {
+        const form = new FormData();
+        form.append('description', description);
+        form.append('bpm', Number(bpm));
+        form.append('duration', Number(duration));
+        form.append('variations', Number(variations));
+        form.append('seed', seedFile, seedLabel.startsWith('sketch') ? 'sketch.webm' : seedFile.name);
+        form.append('noise_level', noiseLevel);
+        res = await fetch(`${FLASK_URL}/generate`, { method: 'POST', body: form });
+      } else {
+        res = await fetch(`${FLASK_URL}/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description, bpm: Number(bpm), duration: Number(duration), variations: Number(variations) }),
+        });
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'generation failed');
       onGenerate(data.audio_urls);
@@ -123,6 +188,55 @@ function GeneratorPage({ onGenerate }) {
           disabled={loading}
         />
       </div>
+      <div className="gen-field">
+        <p className="field-label">seed audio <span className="field-optional">(optional)</span></p>
+        <div className="seed-row">
+          <div className="seed-inputs">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".mp3,.wav"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+              disabled={loading}
+            />
+            {seedFile ? (
+              <div className="seed-active">
+                <span className="seed-name">{seedLabel}</span>
+                <button className="seed-clear" onClick={clearSeed} disabled={loading}>×</button>
+              </div>
+            ) : (
+              <div className="seed-buttons">
+                <button className="seed-upload-btn" onClick={() => fileInputRef.current.click()} disabled={loading}>
+                  + choose file
+                </button>
+                <button
+                  className={`seed-sketch-btn${recording ? ' recording' : ''}`}
+                  onClick={recording ? stopSketch : startSketch}
+                  disabled={loading}
+                >
+                  {recording ? 'stop' : 'sketch'}
+                </button>
+              </div>
+            )}
+          </div>
+          {seedFile && (
+            <div className="noise-field">
+              <p className="field-label">noise level {noiseLevel.toFixed(2)}</p>
+              <input
+                type="range"
+                className="noise-slider"
+                min="0.1"
+                max="1.0"
+                step="0.05"
+                value={noiseLevel}
+                onChange={e => setNoiseLevel(Number(e.target.value))}
+                disabled={loading}
+              />
+            </div>
+          )}
+        </div>
+      </div>
       <div className="gen-row">
         <div className="gen-field">
           <p className="field-label">bpm</p>
@@ -142,10 +256,10 @@ function GeneratorPage({ onGenerate }) {
             type="number"
             placeholder="90"
             min="1"
-            max="190"
+            max="380"
             value={duration}
             onChange={e => setDuration(e.target.value)}
-            onBlur={e => setDuration(String(Math.min(190, Math.max(1, Number(e.target.value) || 1))))}
+            onBlur={e => setDuration(String(Math.min(380, Math.max(1, Number(e.target.value) || 1))))}
             disabled={loading}
           />
         </div>

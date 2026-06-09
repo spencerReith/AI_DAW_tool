@@ -2,6 +2,9 @@ import sys
 import os
 import io
 import time
+import shutil
+import subprocess
+import tempfile
 import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -13,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 import mido
 import anthropic
 import requests as http_requests
+from imageio_ffmpeg import get_ffmpeg_exe
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 
@@ -55,9 +59,35 @@ Rules:
 
 claude = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_KEY'))
 
-STABILITY_KEY = os.environ.get('STABILITY_KEY')
-STABILITY_URL  = 'https://api.stability.ai/v2beta/audio/stable-audio/text-to-audio'
-STABILITY_POLL = 'https://api.stability.ai/v2beta/audio/results/{}'
+SYSTEM_PROMPT_A2A = f"""You are a prompt engineer for Stability AI's Stable Audio 3 model.
+
+The user has provided a seed audio file. Stable Audio 3 will transform that seed into a new composition guided by your prompt. Your job is to rewrite the user's description into a single prompt string that describes the *target style* the seed should be transformed into.
+
+Follow the guide below. Structure the output in this order:
+1. Core style/genre (with subgenre if applicable)
+2. Key instruments — primary, supporting, rhythm, texture
+3. Mood & energy descriptors (precise, evocative language — not generic words like "happy" or "sad")
+4. BPM (always include the exact value provided)
+5. Any relevant production characteristics (recording quality, arrangement style, era references)
+6. Where appropriate, include AudioSparx tags (e.g. TrackType: Music, VocalType: Instrumental, Genre: ..., Instruments: ...)
+
+Rules:
+- Output the prompt string only. No explanation, no markdown, no labels.
+- Use natural language sentences. AudioSparx tags may be appended at the end.
+- Do not invent elements the user did not describe or imply.
+- Use specific instrument names (e.g. "808 kick" over "bass drum", "pedal steel guitar" over "guitar").
+- Use vocabulary and phrasing drawn directly from the guide examples.
+- Keep it concise — every word should add meaningful context.
+- Remember: the output will be a transformation of the seed audio, not a blank-slate generation.
+
+--- STABLE AUDIO 3 PROMPT GUIDE ---
+{STABLE_AUDIO_GUIDE}
+"""
+
+STABILITY_KEY      = os.environ.get('STABILITY_KEY')
+STABILITY_URL      = 'https://api.stability.ai/v2beta/audio/stable-audio/text-to-audio'
+STABILITY_A2A_URL  = 'https://api.stability.ai/v2beta/audio/stable-audio/audio-to-audio'
+STABILITY_POLL     = 'https://api.stability.ai/v2beta/audio/results/{}'
 
 app = Flask(__name__)
 CORS(app)  # Step 4: allow requests from Electron renderer (localhost:5173)
@@ -147,22 +177,115 @@ def generate_one(description, bpm, duration, timestamp, index):
         return None
 
 
+def generate_one_audio(description, bpm, seed_path, strength, duration, timestamp, index):
+    """One audio-to-audio variation: Claude rewrite → Stable Audio A2A → save. Returns local URL or None."""
+    try:
+        raw_prompt = f'{description}, {bpm} BPM'
+        try:
+            msg = claude.messages.create(
+                model='claude-opus-4-8',
+                max_tokens=256,
+                system=SYSTEM_PROMPT_A2A,
+                messages=[{'role': 'user', 'content': f'Description: {description}\nBPM: {bpm}'}]
+            )
+            prompt = msg.content[0].text.strip()
+            print(f'[claude-a2a] variation {index}: {prompt}')
+            log(f'[stable-audio-a2a] variation {index} strength={strength} claude prompt="{prompt}"')
+        except Exception as e:
+            prompt = raw_prompt
+            print(f'[claude-a2a] variation {index} error, falling back: {e}')
+
+        with open(seed_path, 'rb') as audio_f:
+            res = http_requests.post(
+                STABILITY_A2A_URL,
+                headers={'authorization': f'Bearer {STABILITY_KEY}', 'accept': 'audio/*'},
+                files={'audio': audio_f},
+                data={'prompt': prompt, 'output_format': 'mp3', 'duration': duration, 'strength': strength},
+            )
+        if res.status_code != 202:
+            raise Exception(f'stability a2a start failed: {res.json()}')
+
+        generation_id = res.json()['id']
+
+        while True:
+            poll = http_requests.get(
+                STABILITY_POLL.format(generation_id),
+                headers={'authorization': f'Bearer {STABILITY_KEY}', 'accept': 'audio/*'},
+            )
+            if poll.status_code == 202:
+                time.sleep(3)
+            elif poll.status_code == 200:
+                audio_bytes = poll.content
+                break
+            else:
+                raise Exception(f'stability a2a poll failed: {poll.json()}')
+
+        filename = f'beat_{timestamp}_{index}.mp3'
+        with open(os.path.join(GENERATED_DIR, filename), 'wb') as f:
+            f.write(audio_bytes)
+
+        log(f'[stable-audio-a2a] variation {index} output="{filename}"')
+        return f'http://localhost:5001/generated/{filename}'
+    except Exception as e:
+        print(f'[generate_one_audio] variation {index} failed: {e}')
+        return None
+
+
 @app.route('/generate', methods=['POST'])
 def generate():
-    body = request.get_json()
-    description = body.get('description', '').strip()
-    bpm        = body.get('bpm', 120)
-    duration   = max(1, min(int(body.get('duration', 90)), 380))
-    variations = max(1, min(int(body.get('variations', 1)), 4))
+    timestamp  = datetime.datetime.now().strftime('%H_%M_%S')
 
-    print(f'[request] description="{description}" bpm={bpm} duration={duration} variations={variations}')
-    log(f'[stable-audio] prompt="{description}" bpm={bpm} duration={duration} variations={variations}')
+    if request.content_type and request.content_type.startswith('multipart/form-data'):
+        # audio-to-audio path
+        description = request.form.get('description', '').strip()
+        bpm        = request.form.get('bpm', 120)
+        duration   = max(1, min(int(request.form.get('duration', 90)), 380))
+        variations = max(1, min(int(request.form.get('variations', 1)), 4))
+        strength   = max(0.0, min(float(request.form.get('noise_level', 0.5)), 1.0))
+        seed_file  = request.files.get('seed')
 
-    timestamp = datetime.datetime.now().strftime('%H_%M_%S')
+        if not seed_file:
+            return jsonify({'error': 'seed file missing'}), 400
 
-    with ThreadPoolExecutor(max_workers=variations) as ex:
-        futures = [ex.submit(generate_one, description, bpm, duration, timestamp, i + 1) for i in range(variations)]
-        audio_urls = [f.result() for f in futures]
+        print(f'[request-a2a] description="{description}" bpm={bpm} duration={duration} variations={variations} strength={strength} seed="{seed_file.filename}"')
+        log(f'[stable-audio-a2a] prompt="{description}" bpm={bpm} duration={duration} variations={variations} strength={strength} seed="{seed_file.filename}"')
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            original_name = seed_file.filename.lower()
+            saved_path = os.path.join(temp_dir, 'seed_original')
+            seed_file.save(saved_path)
+
+            # Convert webm → wav; mp3/wav pass through
+            if original_name.endswith('.webm'):
+                seed_path = os.path.join(temp_dir, 'seed.wav')
+                subprocess.run(
+                    [get_ffmpeg_exe(), '-y', '-i', saved_path, seed_path],
+                    check=True, capture_output=True
+                )
+            else:
+                seed_path = saved_path
+
+            with ThreadPoolExecutor(max_workers=variations) as ex:
+                futures = [ex.submit(generate_one_audio, description, bpm, seed_path, strength, duration, timestamp, i + 1) for i in range(variations)]
+                audio_urls = [f.result() for f in futures]
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    else:
+        # text-only path
+        body       = request.get_json()
+        description = body.get('description', '').strip()
+        bpm        = body.get('bpm', 120)
+        duration   = max(1, min(int(body.get('duration', 90)), 380))
+        variations = max(1, min(int(body.get('variations', 1)), 4))
+
+        print(f'[request] description="{description}" bpm={bpm} duration={duration} variations={variations}')
+        log(f'[stable-audio] prompt="{description}" bpm={bpm} duration={duration} variations={variations}')
+
+        with ThreadPoolExecutor(max_workers=variations) as ex:
+            futures = [ex.submit(generate_one, description, bpm, duration, timestamp, i + 1) for i in range(variations)]
+            audio_urls = [f.result() for f in futures]
 
     audio_urls = [u for u in audio_urls if u is not None]
     if not audio_urls:

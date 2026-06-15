@@ -91,6 +91,9 @@ function GeneratorPage({ onGenerate }) {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const recordingStartRef = useRef(null);
+  const sketchAudioRef = useRef(null);
+  const [sketchUrl, setSketchUrl] = useState(null);
+  const [sketchPlaying, setSketchPlaying] = useState(false);
 
   useEffect(() => {
     if (!loading) { setLoadingText('generate'); return; }
@@ -101,6 +104,10 @@ function GeneratorPage({ onGenerate }) {
   }, [loading]);
 
   function clearSeed() {
+    // stop playback and revoke sketch blob URL
+    if (sketchAudioRef.current) { sketchAudioRef.current.pause(); sketchAudioRef.current = null; }
+    if (sketchUrl) { URL.revokeObjectURL(sketchUrl); setSketchUrl(null); }
+    setSketchPlaying(false);
     setSeedFile(null);
     setSeedLabel('');
     setNoiseLevel(0.5);
@@ -129,6 +136,8 @@ function GeneratorPage({ onGenerate }) {
         const m = Math.floor(secs / 60);
         const s = secs % 60;
         clearSeed();
+        const url = URL.createObjectURL(blob);
+        setSketchUrl(url);
         setSeedFile(blob);
         setSeedLabel(`sketch (${m}:${String(s).padStart(2, '0')})`);
         setRecording(false);
@@ -203,6 +212,24 @@ function GeneratorPage({ onGenerate }) {
             {seedFile ? (
               <div className="seed-active">
                 <span className="seed-name">{seedLabel}</span>
+                {sketchUrl && (
+                  <button className="seed-play" disabled={loading} onClick={() => {
+                    if (!sketchAudioRef.current) {
+                      const audio = new Audio(sketchUrl);
+                      sketchAudioRef.current = audio;
+                      audio.onended = () => { sketchAudioRef.current = null; setSketchPlaying(false); };
+                    }
+                    if (sketchPlaying) {
+                      sketchAudioRef.current.pause();
+                      sketchAudioRef.current.currentTime = 0;
+                      sketchAudioRef.current = null;
+                      setSketchPlaying(false);
+                    } else {
+                      sketchAudioRef.current.play();
+                      setSketchPlaying(true);
+                    }
+                  }}>{sketchPlaying ? '‖' : '▶'}</button>
+                )}
                 <button className="seed-clear" onClick={clearSeed} disabled={loading}>×</button>
               </div>
             ) : (
@@ -215,14 +242,14 @@ function GeneratorPage({ onGenerate }) {
                   onClick={recording ? stopSketch : startSketch}
                   disabled={loading}
                 >
-                  {recording ? 'stop' : 'sketch'}
+                  {recording ? 'stop' : 'record'}
                 </button>
               </div>
             )}
           </div>
           {seedFile && (
             <div className="noise-field">
-              <p className="field-label">noise level {noiseLevel.toFixed(2)}</p>
+              <p className="field-label">diverge from seed {noiseLevel.toFixed(2)}</p>
               <input
                 type="range"
                 className="noise-slider"

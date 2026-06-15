@@ -344,6 +344,18 @@
   color: #000;
 }
 
+.seed-play {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: #000;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.seed-play:hover:not(:disabled) { color: #555; }
+.seed-play:disabled { opacity: 0.4; cursor: default; }
+
 .seed-clear {
   background: none;
   border: none;

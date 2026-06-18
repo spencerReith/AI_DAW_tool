@@ -86,6 +86,7 @@ function GeneratorPage({ onGenerate }) {
   const [seedLabel, setSeedLabel] = useState('');
   const [noiseLevel, setNoiseLevel] = useState(0.5);
   const [recording, setRecording] = useState(false);
+  const [seedOpen, setSeedOpen] = useState(false);
 
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -139,7 +140,7 @@ function GeneratorPage({ onGenerate }) {
         const url = URL.createObjectURL(blob);
         setSketchUrl(url);
         setSeedFile(blob);
-        setSeedLabel(`sketch (${m}:${String(s).padStart(2, '0')})`);
+        setSeedLabel(`recording (${m}:${String(s).padStart(2, '0')})`);
         setRecording(false);
       };
       mr.start();
@@ -165,7 +166,7 @@ function GeneratorPage({ onGenerate }) {
         form.append('bpm', Number(bpm));
         form.append('duration', Number(duration));
         form.append('variations', Number(variations));
-        form.append('seed', seedFile, seedLabel.startsWith('sketch') ? 'sketch.webm' : seedFile.name);
+        form.append('seed', seedFile, seedLabel.startsWith('recording') ? 'sketch.webm' : seedFile.name);
         form.append('noise_level', noiseLevel);
         res = await fetch(`${FLASK_URL}/generate`, { method: 'POST', body: form });
       } else {
@@ -198,8 +199,11 @@ function GeneratorPage({ onGenerate }) {
         />
       </div>
       <div className="gen-field">
-        <p className="field-label">seed audio <span className="field-optional">(optional)</span></p>
-        <div className="seed-row">
+        <p className="field-label seed-toggle" onClick={() => setSeedOpen(o => !o)}>
+          seed audio <span className="field-optional">(optional)</span>
+          <span className="seed-arrow">{seedOpen ? '▾' : '▸'}</span>
+        </p>
+        {seedOpen && <div className="seed-row">
           <div className="seed-inputs">
             <input
               ref={fileInputRef}
@@ -249,7 +253,7 @@ function GeneratorPage({ onGenerate }) {
           </div>
           {seedFile && (
             <div className="noise-field">
-              <p className="field-label">diverge from seed {noiseLevel.toFixed(2)}</p>
+              <p className="field-label">diverge from seed: {noiseLevel.toFixed(2)}</p>
               <input
                 type="range"
                 className="noise-slider"
@@ -262,7 +266,7 @@ function GeneratorPage({ onGenerate }) {
               />
             </div>
           )}
-        </div>
+        </div>}
       </div>
       <div className="gen-row">
         <div className="gen-field">

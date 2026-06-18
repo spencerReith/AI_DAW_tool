@@ -294,6 +294,18 @@
 }
 
 /* Seed audio section */
+.seed-toggle {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.seed-arrow {
+  font-size: 18px;
+  color: #555;
+}
+
 .seed-row {
   display: flex;
   align-items: flex-start;

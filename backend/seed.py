@@ -1,51 +1,56 @@
-# Desktop-only seed audio (audio-to-audio) route. Registered by app.py when ENABLE_SEED=1.
-# Seed → basic-pitch melody MIDI → inferred chords → synth render → Stable Audio A2A.
+# Desktop-only seed audio route. Registered by app.py when ENABLE_SEED=1.
+# Seed → basic-pitch melody MIDI → inferred chords → synth render → MusicGen melody conditioning.
 import os
 import shutil
 import tempfile
 import datetime
 import subprocess
 from flask import request, jsonify
+import requests as http_requests
 
-STABILITY_A2A_URL = 'https://api.stability.ai/v2beta/audio/stable-audio/audio-to-audio'
+MUSICGEN_MODEL = 'meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb'
+MUSICGEN_MAX_DURATION = 30
 
 
-def init_seed(app, guide, rewrite_prompt, run_stability, run_variations, log):
-    system_prompt = f"""You are a prompt engineer for Stability AI's Stable Audio 3 model.
+def init_seed(app, rewrite_prompt, save_audio, run_variations, log):
+    with open(os.path.join(os.path.dirname(__file__), '..', 'prompt_guides', 'musicgen_prompting.md')) as f:
+        guide = f.read()
 
-The user has provided a seed audio file. Stable Audio 3 will transform that seed into a new composition guided by your prompt. Your job is to rewrite the user's description into a single prompt string that describes the *target style* the seed should be transformed into.
+    system_prompt = f"""You are a prompt engineer for Meta's MusicGen model.
 
-Follow the guide below. Structure the output in this order:
-1. Core style/genre (with subgenre if applicable)
-2. Key instruments — primary, supporting, rhythm, texture
-3. Mood & energy descriptors (precise, evocative language — not generic words like "happy" or "sad")
-4. BPM (always include the exact value provided)
-5. Any relevant production characteristics (recording quality, arrangement style, era references)
-6. Where appropriate, include AudioSparx tags (e.g. TrackType: Music, VocalType: Instrumental, Genre: ..., Instruments: ...)
+The user has hummed or recorded a melody. MusicGen will use that melody as a conditioning input and reimagine it in a new style. Your job is to take the user's style description and rewrite it into a single MusicGen prompt string that captures how the melody should be reimagined.
+
+Use the guide below to write a prompt that directs MusicGen toward the target style, mood, and instrumentation — while staying true to what the user described.
 
 Rules:
 - Output the prompt string only. No explanation, no markdown, no labels.
-- Use natural language sentences. AudioSparx tags may be appended at the end.
+- Use natural language sentences, not pipe-delimited fields.
 - Do not invent elements the user did not describe or imply.
-- Use specific instrument names (e.g. "808 kick" over "bass drum", "pedal steel guitar" over "guitar").
 - Use vocabulary and phrasing drawn directly from the guide examples.
 - Keep it concise — every word should add meaningful context.
-- Remember: the output will be a transformation of the seed audio, not a blank-slate generation.
 
---- STABLE AUDIO 3 PROMPT GUIDE ---
+--- MUSICGEN PROMPT GUIDE ---
 {guide}
 """
 
-    def generate_one_audio(description, bpm, seed_path, strength, duration, timestamp, index):
-        """One audio-to-audio variation. Returns relative URL or None."""
+    def generate_one_musicgen(description, bpm, seed_path, duration, timestamp, index):
+        """One MusicGen variation conditioned on the rendered seed. Returns relative URL or None."""
+        import replicate
         try:
-            prompt = rewrite_prompt(system_prompt, description, bpm, 'stable-audio-a2a', index)
-            with open(seed_path, 'rb') as audio_f:
-                return run_stability(STABILITY_A2A_URL, {'audio': audio_f},
-                                     {'prompt': prompt, 'output_format': 'mp3', 'duration': duration, 'strength': strength},
-                                     'stable-audio-a2a', timestamp, index)
+            prompt = rewrite_prompt(system_prompt, description, bpm, 'musicgen', index)
+            with open(seed_path, 'rb') as f:
+                output = replicate.run(MUSICGEN_MODEL, input={
+                    'prompt':                 prompt,
+                    'melody':                 f,
+                    'model_version':          'stereo-melody-large',
+                    'output_format':          'mp3',
+                    'normalization_strategy': 'peak',
+                    'duration':               duration,
+                })
+            url = output.url if hasattr(output, 'url') else str(output)
+            return save_audio(http_requests.get(url).content, 'musicgen', timestamp, index)
         except Exception as e:
-            print(f'[generate_one_audio] variation {index} failed: {e}')
+            print(f'[generate_one_musicgen] variation {index} failed: {e}')
             return None
 
     def seed_to_render(seed_file, temp_dir):
@@ -80,7 +85,7 @@ Rules:
         merge(melody_midi, chord_midi, merged_midi)
         render_path = os.path.join(temp_dir, 'render.mp3')
         render(merged_midi, render_path, temp_dir)
-        log(f'[stable-audio-a2a] seed rendered via midi pipeline, key={key_obj}')
+        log(f'[musicgen] seed rendered via midi pipeline, key={key_obj}')
         return render_path
 
     @app.route('/generate-seed', methods=['POST'])
@@ -88,16 +93,15 @@ Rules:
         timestamp   = datetime.datetime.now().strftime('%H_%M_%S')
         description = request.form.get('description', '').strip()
         bpm         = request.form.get('bpm', 120)
-        duration    = max(1, min(int(request.form.get('duration', 90)), 380))
+        duration    = max(1, min(int(request.form.get('duration', 30)), MUSICGEN_MAX_DURATION))
         variations  = max(1, min(int(request.form.get('variations', 1)), 4))
-        strength    = max(0.0, min(float(request.form.get('noise_level', 0.5)), 1.0))
         seed_file   = request.files.get('seed')
 
         if not seed_file:
             return jsonify({'error': 'seed file missing'}), 400
 
-        print(f'[request-a2a] description="{description}" bpm={bpm} duration={duration} variations={variations} strength={strength} seed="{seed_file.filename}"')
-        log(f'[stable-audio-a2a] prompt="{description}" bpm={bpm} duration={duration} variations={variations} strength={strength} seed="{seed_file.filename}"')
+        print(f'[request-musicgen] description="{description}" bpm={bpm} duration={duration} variations={variations} seed="{seed_file.filename}"')
+        log(f'[musicgen] prompt="{description}" bpm={bpm} duration={duration} variations={variations} seed="{seed_file.filename}"')
 
         temp_dir = tempfile.mkdtemp()
         try:
@@ -106,6 +110,6 @@ Rules:
             except Exception as e:
                 print(f'[seed pipeline] failed: {e}')
                 return jsonify({'error': f'seed processing failed: {e}'}), 500
-            return run_variations(generate_one_audio, variations, description, bpm, seed_path, strength, duration, timestamp)
+            return run_variations(generate_one_musicgen, variations, description, bpm, seed_path, duration, timestamp)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

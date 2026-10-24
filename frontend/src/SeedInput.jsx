@@ -1,10 +1,9 @@
-// Desktop-only seed audio picker/recorder. Reports {file, filename, noiseLevel} or null via onChange.
+// Desktop-only seed audio picker/recorder. Reports {file, filename} or null via onChange.
 import { useState, useRef, useEffect } from 'react';
 
 export default function SeedInput({ disabled, onChange, onError }) {
   const [seedFile, setSeedFile] = useState(null);
   const [seedLabel, setSeedLabel] = useState('');
-  const [noiseLevel, setNoiseLevel] = useState(0.5);
   const [recording, setRecording] = useState(false);
   const [seedOpen, setSeedOpen] = useState(false);
 
@@ -21,9 +20,8 @@ export default function SeedInput({ disabled, onChange, onError }) {
     onChange(seedFile ? {
       file: seedFile,
       filename: seedLabel.startsWith('recording') ? 'sketch.webm' : seedFile.name,
-      noiseLevel,
     } : null);
-  }, [seedFile, seedLabel, noiseLevel]);
+  }, [seedFile, seedLabel]);
 
   function clearSeed() {
     // stop playback and revoke sketch blob URL
@@ -32,7 +30,6 @@ export default function SeedInput({ disabled, onChange, onError }) {
     setSketchPlaying(false);
     setSeedFile(null);
     setSeedLabel('');
-    setNoiseLevel(0.5);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -130,21 +127,6 @@ export default function SeedInput({ disabled, onChange, onError }) {
             </div>
           )}
         </div>
-        {seedFile && (
-          <div className="noise-field">
-            <p className="field-label">diverge from seed: {noiseLevel.toFixed(2)}</p>
-            <input
-              type="range"
-              className="noise-slider"
-              min="0.1"
-              max="1.0"
-              step="0.05"
-              value={noiseLevel}
-              onChange={e => setNoiseLevel(Number(e.target.value))}
-              disabled={disabled}
-            />
-          </div>
-        )}
       </div>}
     </div>
   );

@@ -108,7 +108,6 @@ function GeneratorPage({ onGenerate }) {
         form.append('duration', Number(duration));
         form.append('variations', Number(variations));
         form.append('seed', seed.file, seed.filename);
-        form.append('noise_level', seed.noiseLevel);
         res = await fetch(`${FLASK_URL}/generate-seed`, { method: 'POST', body: form });
       } else {
         res = await fetch(`${FLASK_URL}/generate`, {

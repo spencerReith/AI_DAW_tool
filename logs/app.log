@@ -160,3 +160,14 @@
 [2026-10-24 17:20:30] [stable-audio] variation 2 claude prompt="rewritten"
 [2026-10-24 17:20:30] [stable-audio] variation 1 output="beat_17_20_30_1.mp3"
 [2026-10-24 17:20:30] [stable-audio] variation 2 output="beat_17_20_30_2.mp3"
+[2026-10-24 17:26:30] [musicgen] prompt="jazz" bpm=120 duration=30 variations=2 seed="sketch.webm"
+[2026-10-24 17:26:30] [musicgen] seed rendered via midi pipeline, key=C major
+[2026-10-24 17:26:30] [musicgen] variation 1 claude prompt="rewritten jazz"
+[2026-10-24 17:26:30] [musicgen] variation 2 claude prompt="rewritten jazz"
+[2026-10-24 17:26:30] [musicgen] variation 2 output="beat_17_26_30_2.mp3"
+[2026-10-24 17:26:30] [musicgen] variation 1 output="beat_17_26_30_1.mp3"
+[2026-10-24 17:26:33] [stable-audio] prompt="lofi" bpm=90 duration=5 variations=2
+[2026-10-24 17:26:33] [stable-audio] variation 1 claude prompt="rewritten"
+[2026-10-24 17:26:33] [stable-audio] variation 2 claude prompt="rewritten"
+[2026-10-24 17:26:33] [stable-audio] variation 1 output="beat_17_26_33_1.mp3"
+[2026-10-24 17:26:33] [stable-audio] variation 2 output="beat_17_26_33_2.mp3"

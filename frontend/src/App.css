@@ -380,18 +380,6 @@
 .seed-clear:hover:not(:disabled) { color: #000; }
 .seed-clear:disabled { opacity: 0.4; cursor: default; }
 
-.noise-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.noise-slider {
-  width: 140px;
-  accent-color: #000;
-  cursor: pointer;
-}
-
 .accompaniment-selector {
   display: flex;
   gap: 8px;

@@ -129,9 +129,14 @@ def run_stability(url, files, data, tag, timestamp, index):
         else:
             raise Exception(f'stability poll failed: {poll.json()}')
 
+    return save_audio(poll.content, tag, timestamp, index)
+
+
+def save_audio(audio_bytes, tag, timestamp, index):
+    """Save mp3 bytes to GENERATED_DIR. Returns relative URL."""
     filename = f'beat_{timestamp}_{index}.mp3'
     with open(os.path.join(GENERATED_DIR, filename), 'wb') as f:
-        f.write(poll.content)
+        f.write(audio_bytes)
 
     log(f'[{tag}] variation {index} output="{filename}"')
     return f'/generated/{filename}'  # relative; frontend prefixes API host
@@ -176,7 +181,7 @@ def generate():
 # Seed audio (audio-to-audio) is desktop-only; set ENABLE_SEED=0 for the web deploy
 if os.environ.get('ENABLE_SEED', '1') == '1':
     from seed import init_seed
-    init_seed(app, STABLE_AUDIO_GUIDE, rewrite_prompt, run_stability, run_variations, log)
+    init_seed(app, rewrite_prompt, save_audio, run_variations, log)
 
 @app.route('/generated/<filename>')
 def serve_generated(filename):

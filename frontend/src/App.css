@@ -33,7 +33,8 @@
 
 .launch-art {
   font-family: 'Courier New', Courier, monospace;
-  font-size: 2.9px;
+  /* scale art (363 cols × 148 rows, ~0.6em × 1.2em per char) to fit window; 120px reserved for title + go */
+  font-size: min(calc((100vw - 16px) / 218), calc((100vh - 120px) / 178));
   line-height: 1.2;
   color: #000;
   white-space: pre;

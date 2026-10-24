@@ -5,8 +5,9 @@ import SeedInput from './SeedInput';
 
 // API host: set VITE_API_URL for web builds ('' = same origin); defaults to local Flask
 const FLASK_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5001';
-// Seed audio is desktop-only: Electron's preload exposes window.api
-const SEED_ENABLED = !!window.api;
+// Electron's preload exposes window.api; seed audio is desktop-only
+const IS_ELECTRON = !!window.api;
+const SEED_ENABLED = IS_ELECTRON;
 
 // Split once at module level — never changes
 const LINES = rubinRaw.split('\n');
@@ -67,7 +68,7 @@ function LaunchPage({ onGo }) {
   return (
     <div className="launch">
       <div className="launch-content">
-        <h1 className="launch-title">beats</h1>
+        <h1 className="launch-title">beats{!IS_ELECTRON && <span className="launch-sub">webapp version</span>}</h1>
         <pre className="launch-art">{lineStates.join('\n')}</pre>
         {done && (
           <button className="launch-go" onClick={onGo}>go</button>

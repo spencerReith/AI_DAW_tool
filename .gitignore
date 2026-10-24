@@ -9,3 +9,6 @@ venv/
 frontend/dist/
 CLAUDE.md
 .claude/
+# runtime output
+generated/
+logs/

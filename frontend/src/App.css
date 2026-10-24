@@ -23,6 +23,14 @@
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+.launch-sub {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #888;
+  margin-left: 8px;
+}
+
 .launch-art {
   font-family: 'Courier New', Courier, monospace;
   font-size: 2.9px;

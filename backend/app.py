@@ -187,5 +187,15 @@ if os.environ.get('ENABLE_SEED', '1') == '1':
 def serve_generated(filename):
     return send_from_directory(GENERATED_DIR, filename)
 
+# Web deploy: serve built frontend (frontend/dist) for all other GET paths
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    if path and os.path.isfile(os.path.join(FRONTEND_DIST, path)):
+        return send_from_directory(FRONTEND_DIST, path)
+    return send_from_directory(FRONTEND_DIST, 'index.html')
+
 if __name__ == '__main__':
     app.run(port=int(os.environ.get('PORT', 5001)))  # PORT set by Cloud Run

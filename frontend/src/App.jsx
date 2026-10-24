@@ -156,7 +156,7 @@ function GeneratorPage({ onGenerate }) {
       <div className="gen-field">
         <p className="field-label">describe your beat</p>
         <textarea
-          className="gen-textarea"
+          className={`gen-textarea${focused || description ? '' : ' typing'}`}
           placeholder={focused || description ? '_' : typedExample}
           value={description}
           onChange={e => setDescription(e.target.value)}

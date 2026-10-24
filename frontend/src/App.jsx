@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import rubinRaw from '../../rubin.txt?raw';
 import './App.css';
+import SeedInput from './SeedInput';
 
 // API host: set VITE_API_URL for web builds ('' = same origin); defaults to local Flask
 const FLASK_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5001';
+// Seed audio is desktop-only: Electron's preload exposes window.api
+const SEED_ENABLED = !!window.api;
 
 // Split once at module level — never changes
 const LINES = rubinRaw.split('\n');
@@ -83,19 +86,7 @@ function GeneratorPage({ onGenerate }) {
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('generate');
   const [error, setError] = useState(null);
-  const [seedFile, setSeedFile] = useState(null);
-  const [seedLabel, setSeedLabel] = useState('');
-  const [noiseLevel, setNoiseLevel] = useState(0.5);
-  const [recording, setRecording] = useState(false);
-  const [seedOpen, setSeedOpen] = useState(false);
-
-  const fileInputRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const recordingStartRef = useRef(null);
-  const sketchAudioRef = useRef(null);
-  const [sketchUrl, setSketchUrl] = useState(null);
-  const [sketchPlaying, setSketchPlaying] = useState(false);
+  const [seed, setSeed] = useState(null);  // desktop-only seed audio
 
   useEffect(() => {
     if (!loading) { setLoadingText('generate'); return; }
@@ -105,71 +96,20 @@ function GeneratorPage({ onGenerate }) {
     return () => clearInterval(id);
   }, [loading]);
 
-  function clearSeed() {
-    // stop playback and revoke sketch blob URL
-    if (sketchAudioRef.current) { sketchAudioRef.current.pause(); sketchAudioRef.current = null; }
-    if (sketchUrl) { URL.revokeObjectURL(sketchUrl); setSketchUrl(null); }
-    setSketchPlaying(false);
-    setSeedFile(null);
-    setSeedLabel('');
-    setNoiseLevel(0.5);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }
-
-  function handleFileChange(e) {
-    const f = e.target.files[0];
-    if (!f) return;
-    clearSeed();
-    setSeedFile(f);
-    setSeedLabel(f.name);
-  }
-
-  async function startSketch() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      chunksRef.current = [];
-      recordingStartRef.current = Date.now();
-      mr.ondataavailable = e => chunksRef.current.push(e.data);
-      mr.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const secs = Math.round((Date.now() - recordingStartRef.current) / 1000);
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        clearSeed();
-        const url = URL.createObjectURL(blob);
-        setSketchUrl(url);
-        setSeedFile(blob);
-        setSeedLabel(`recording (${m}:${String(s).padStart(2, '0')})`);
-        setRecording(false);
-      };
-      mr.start();
-      mediaRecorderRef.current = mr;
-      setRecording(true);
-    } catch {
-      setError('mic access denied');
-    }
-  }
-
-  function stopSketch() {
-    mediaRecorderRef.current?.stop();
-  }
-
   async function handleGenerate() {
     setLoading(true);
     setError(null);
     try {
       let res;
-      if (seedFile) {
+      if (seed) {
         const form = new FormData();
         form.append('description', description);
         form.append('bpm', Number(bpm));
         form.append('duration', Number(duration));
         form.append('variations', Number(variations));
-        form.append('seed', seedFile, seedLabel.startsWith('recording') ? 'sketch.webm' : seedFile.name);
-        form.append('noise_level', noiseLevel);
-        res = await fetch(`${FLASK_URL}/generate`, { method: 'POST', body: form });
+        form.append('seed', seed.file, seed.filename);
+        form.append('noise_level', seed.noiseLevel);
+        res = await fetch(`${FLASK_URL}/generate-seed`, { method: 'POST', body: form });
       } else {
         res = await fetch(`${FLASK_URL}/generate`, {
           method: 'POST',
@@ -199,76 +139,7 @@ function GeneratorPage({ onGenerate }) {
           disabled={loading}
         />
       </div>
-      <div className="gen-field">
-        <p className="field-label seed-toggle" onClick={() => setSeedOpen(o => !o)}>
-          seed audio <span className="field-optional">(optional)</span>
-          <span className="seed-arrow">{seedOpen ? '▾' : '▸'}</span>
-        </p>
-        {seedOpen && <div className="seed-row">
-          <div className="seed-inputs">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".mp3,.wav"
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-              disabled={loading}
-            />
-            {seedFile ? (
-              <div className="seed-active">
-                <span className="seed-name">{seedLabel}</span>
-                {sketchUrl && (
-                  <button className="seed-play" disabled={loading} onClick={() => {
-                    if (!sketchAudioRef.current) {
-                      const audio = new Audio(sketchUrl);
-                      sketchAudioRef.current = audio;
-                      audio.onended = () => { sketchAudioRef.current = null; setSketchPlaying(false); };
-                    }
-                    if (sketchPlaying) {
-                      sketchAudioRef.current.pause();
-                      sketchAudioRef.current.currentTime = 0;
-                      sketchAudioRef.current = null;
-                      setSketchPlaying(false);
-                    } else {
-                      sketchAudioRef.current.play();
-                      setSketchPlaying(true);
-                    }
-                  }}>{sketchPlaying ? '‖' : '▶'}</button>
-                )}
-                <button className="seed-clear" onClick={clearSeed} disabled={loading}>×</button>
-              </div>
-            ) : (
-              <div className="seed-buttons">
-                <button className="seed-upload-btn" onClick={() => fileInputRef.current.click()} disabled={loading}>
-                  + choose file
-                </button>
-                <button
-                  className={`seed-sketch-btn${recording ? ' recording' : ''}`}
-                  onClick={recording ? stopSketch : startSketch}
-                  disabled={loading}
-                >
-                  {recording ? 'stop' : 'record'}
-                </button>
-              </div>
-            )}
-          </div>
-          {seedFile && (
-            <div className="noise-field">
-              <p className="field-label">diverge from seed: {noiseLevel.toFixed(2)}</p>
-              <input
-                type="range"
-                className="noise-slider"
-                min="0.1"
-                max="1.0"
-                step="0.05"
-                value={noiseLevel}
-                onChange={e => setNoiseLevel(Number(e.target.value))}
-                disabled={loading}
-              />
-            </div>
-          )}
-        </div>}
-      </div>
+      {SEED_ENABLED && <SeedInput disabled={loading} onChange={setSeed} onError={setError} />}
       <div className="gen-row">
         <div className="gen-field">
           <p className="field-label">bpm</p>

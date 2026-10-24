@@ -1,7 +1,6 @@
 anthropic==0.105.2
 Flask==3.1.3
 flask-cors==6.0.2
-imageio-ffmpeg==0.6.0
 mido==1.3.3
 python-dotenv==1.2.2
 requests==2.34.2

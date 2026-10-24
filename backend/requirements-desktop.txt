@@ -1,0 +1,7 @@
+-r requirements.txt
+# seed audio pipeline (desktop only)
+imageio-ffmpeg==0.6.0
+music21==10.3.0
+numpy==2.4.6
+replicate==1.0.7
+soundfile==0.13.1

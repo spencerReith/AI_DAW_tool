@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import rubinRaw from '../../rubin.txt?raw';
 import './App.css';
 
-const FLASK_URL = 'http://localhost:5001';
+// API host: set VITE_API_URL for web builds ('' = same origin); defaults to local Flask
+const FLASK_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5001';
 
 // Split once at module level — never changes
 const LINES = rubinRaw.split('\n');
@@ -178,7 +179,7 @@ function GeneratorPage({ onGenerate }) {
       }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'generation failed');
-      onGenerate(data.audio_urls);
+      onGenerate(data.audio_urls.map(u => u && FLASK_URL + u));
     } catch (e) {
       setError(e.message);
       setLoading(false);

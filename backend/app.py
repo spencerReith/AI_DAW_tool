@@ -171,7 +171,7 @@ def generate_one(description, bpm, duration, timestamp, index):
             f.write(audio_bytes)
 
         log(f'[stable-audio] variation {index} output="{filename}"')
-        return f'http://localhost:5001/generated/{filename}'
+        return f'/generated/{filename}'  # relative; frontend prefixes API host
     except Exception as e:
         print(f'[generate_one] variation {index} failed: {e}')
         return None
@@ -225,7 +225,7 @@ def generate_one_audio(description, bpm, seed_path, strength, duration, timestam
             f.write(audio_bytes)
 
         log(f'[stable-audio-a2a] variation {index} output="{filename}"')
-        return f'http://localhost:5001/generated/{filename}'
+        return f'/generated/{filename}'  # relative; frontend prefixes API host
     except Exception as e:
         print(f'[generate_one_audio] variation {index} failed: {e}')
         return None
@@ -298,4 +298,4 @@ def serve_generated(filename):
     return send_from_directory(GENERATED_DIR, filename)
 
 if __name__ == '__main__':
-    app.run(port=5001)
+    app.run(port=int(os.environ.get('PORT', 5001)))  # PORT set by Cloud Run

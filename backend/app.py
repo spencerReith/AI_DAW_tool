@@ -24,14 +24,14 @@ def log(msg):
     with open(LOG_PATH, 'a') as f:
         f.write(f'[{timestamp}] {msg}\n')
 
-# Load stable audio 3 prompt guide once at startup
-_guide_path = os.path.join(os.path.dirname(__file__), '..', 'stable-audio-3-prompting.md')
+# Load stable audio 2.5 prompt guide once at startup
+_guide_path = os.path.join(os.path.dirname(__file__), '..', 'prompt_guides', 'stable_audio_prompt_guide.md')
 with open(_guide_path, 'r') as f:
     STABLE_AUDIO_GUIDE = f.read()
 
-SYSTEM_PROMPT = f"""You are a prompt engineer for Stability AI's Stable Audio 3 model.
+SYSTEM_PROMPT = f"""You are a prompt engineer for Stability AI's Stable Audio 2.5 model.
 
-Your only job is to rewrite a user's beat description into a single Stable Audio 3 prompt string.
+Your only job is to rewrite a user's beat description into a single Stable Audio 2.5 prompt string.
 
 Follow the guide below exactly. Structure the output in this order:
 1. Core style/genre (with subgenre if applicable)
@@ -49,14 +49,15 @@ Rules:
 - Use vocabulary and phrasing drawn directly from the guide examples.
 - Keep it concise — every word should add meaningful context.
 
---- STABLE AUDIO 3 PROMPT GUIDE ---
+--- STABLE AUDIO 2.5 PROMPT GUIDE ---
 {STABLE_AUDIO_GUIDE}
 """
 
 claude = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_KEY'))
 
 STABILITY_KEY      = os.environ.get('STABILITY_KEY')
-STABILITY_URL      = 'https://api.stability.ai/v2beta/audio/stable-audio/text-to-audio'
+STABILITY_URL      = 'https://api.stability.ai/v2beta/audio/stable-audio-2/text-to-audio'
+MAX_DURATION       = 190  # stable-audio-2.5 limit
 STABILITY_POLL     = 'https://api.stability.ai/v2beta/audio/results/{}'
 
 app = Flask(__name__)
@@ -116,6 +117,8 @@ def run_stability(url, files, data, tag, timestamp, index):
     """Start a Stable Audio job, poll until done, save mp3. Returns relative URL."""
     headers = {'authorization': f'Bearer {STABILITY_KEY}', 'accept': 'audio/*'}
     res = http_requests.post(url, headers=headers, files=files, data=data)
+    if res.status_code == 200:  # synchronous endpoints return audio directly
+        return save_audio(res.content, tag, timestamp, index)
     if res.status_code != 202:
         raise Exception(f'stability start failed: {res.json()}')
 
@@ -147,7 +150,7 @@ def generate_one(description, bpm, duration, timestamp, index):
     try:
         prompt = rewrite_prompt(SYSTEM_PROMPT, description, bpm, 'stable-audio', index)
         return run_stability(STABILITY_URL, {'none': ''},
-                             {'prompt': prompt, 'output_format': 'mp3', 'duration': duration},
+                             {'prompt': prompt, 'model': 'stable-audio-2.5', 'output_format': 'mp3', 'duration': duration},
                              'stable-audio', timestamp, index)
     except Exception as e:
         print(f'[generate_one] variation {index} failed: {e}')
@@ -170,7 +173,7 @@ def generate():
     body        = request.get_json()
     description = body.get('description', '').strip()
     bpm         = body.get('bpm', 120)
-    duration    = max(1, min(int(body.get('duration', 90)), 380))
+    duration    = max(1, min(int(body.get('duration', 90)), MAX_DURATION))
     variations  = max(1, min(int(body.get('variations', 1)), 4))
 
     print(f'[request] description="{description}" bpm={bpm} duration={duration} variations={variations}')

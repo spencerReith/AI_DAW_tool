@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import rubinRaw from '../../rubin.txt?raw';
 import './App.css';
 import SeedInput from './SeedInput';
+import promptExamples from './prompt_examples.json';
 
 // API host: set VITE_API_URL for web builds ('' = same origin); defaults to local Flask
 const FLASK_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5001';
@@ -79,8 +80,31 @@ function LaunchPage({ onGo }) {
 }
 
 // Generator page — beat description + BPM input
+// Types out each example, deletes it, moves to the next; runs while active
+function useTypewriter(examples, active) {
+  const [text, setText] = useState('');
+  useEffect(() => {
+    if (!active || !examples.length) return;
+    let i = 0, pos = 0, deleting = false, id;
+    function tick() {
+      const full = examples[i];
+      pos += deleting ? -1 : 1;
+      setText(full.slice(0, pos));
+      let delay = deleting ? 25 : 55;
+      if (!deleting && pos === full.length) { deleting = true; delay = 1800; }  // pause on full text
+      else if (deleting && pos === 0) { deleting = false; i = (i + 1) % examples.length; delay = 400; }
+      id = setTimeout(tick, delay);
+    }
+    id = setTimeout(tick, 400);
+    return () => clearTimeout(id);
+  }, [examples, active]);
+  return text;
+}
+
 function GeneratorPage({ onGenerate }) {
   const [description, setDescription] = useState('');
+  const [focused, setFocused] = useState(false);
+  const typedExample = useTypewriter(promptExamples, !focused && !description);  // rotating placeholder until clicked
   const [bpm, setBpm] = useState('');
   const [duration, setDuration] = useState('90');
   const [variations, setVariations] = useState('1');
@@ -133,9 +157,11 @@ function GeneratorPage({ onGenerate }) {
         <p className="field-label">describe your beat</p>
         <textarea
           className="gen-textarea"
-          placeholder="_"
+          placeholder={focused || description ? '_' : typedExample}
           value={description}
           onChange={e => setDescription(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           disabled={loading}
         />
       </div>
@@ -159,10 +185,10 @@ function GeneratorPage({ onGenerate }) {
             type="number"
             placeholder="90"
             min="1"
-            max="380"
+            max="190"
             value={duration}
             onChange={e => setDuration(e.target.value)}
-            onBlur={e => setDuration(String(Math.min(380, Math.max(1, Number(e.target.value) || 1))))}
+            onBlur={e => setDuration(String(Math.min(190, Math.max(1, Number(e.target.value) || 1))))}
             disabled={loading}
           />
         </div>

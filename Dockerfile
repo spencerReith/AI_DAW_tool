@@ -14,7 +14,7 @@ WORKDIR /app
 COPY backend/requirements.txt backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend backend
-COPY stable-audio-3-prompting.md ./
+COPY prompt_guides/stable_audio_prompt_guide.md prompt_guides/
 COPY --from=frontend /app/frontend/dist frontend/dist
 ENV ENABLE_SEED=0 PORT=8080 PYTHONUNBUFFERED=1
 # long timeout: generation polls Stability for a while
